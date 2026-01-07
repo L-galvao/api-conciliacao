@@ -206,9 +206,9 @@ def conciliar(
         )
 
     empresa_dir = EMPRESAS_DIR / empresa_id
-    mapa_path = empresa_dir / "mapa_plano.json"
+    plano_path = empresa_dir / "plano_contas.xlsx"
 
-    if not (empresa_dir / "plano_contas.xlsx").exists():
+    if not plano_path.exists():
         raise HTTPException(
             status_code=409,
             detail="Plano de contas não mapeado. Envie ou atualize o plano antes de conciliar."
