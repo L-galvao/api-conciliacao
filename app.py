@@ -70,7 +70,7 @@ def health_check():
     return {"status": "ok"}
 
 # =========================================
-# ENDPOINT: UPLOAD DO PLANO DE CONTAS
+# POST: PRIMEIRO UPLOAD DO PLANO DE CONTAS
 # =========================================
 
 @app.post(
@@ -102,12 +102,11 @@ def upload_plano_contas(
     plano_path = empresa_dir / "plano_contas.xlsx"
     mapa_path = empresa_dir / "mapa_plano.json"
 
-    # ✅ AJUSTE IMPORTANTE:
-    # Se já existir mapa_plano.json, não permite novo upload sem intenção explícita
+    # REGRA ATUAL MANTIDA
     if mapa_path.exists():
         raise HTTPException(
             status_code=409,
-            detail="Plano de contas já mapeado. Não é necessário reenviar."
+            detail="Plano de contas já mapeado. Use PUT para atualizar."
         )
 
     try:
@@ -122,6 +121,66 @@ def upload_plano_contas(
     return {
         "status": "ok",
         "message": "Plano de contas enviado com sucesso. Agora o mapa pode ser gerado.",
+        "empresa_id": empresa_id
+    }
+
+# =========================================
+# PUT: ATUALIZAÇÃO DO PLANO DE CONTAS
+# =========================================
+
+@app.put(
+    "/empresas/{empresa_id}/plano-contas",
+    dependencies=[Depends(validar_api_key)]
+)
+def atualizar_plano_contas(
+    empresa_id: str,
+    file: UploadFile = File(...)
+):
+    """
+    Atualiza o plano de contas de uma empresa já existente.
+    Sobrescreve plano_contas.xlsx e invalida o mapa_plano.json,
+    forçando a regeneração automática na próxima conciliação.
+    """
+
+    if not empresa_id.isdigit():
+        raise HTTPException(
+            status_code=400,
+            detail="empresa_id deve ser o CNPJ sem pontuação"
+        )
+
+    if not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(
+            status_code=400,
+            detail="Plano de contas deve ser um arquivo .xlsx"
+        )
+
+    empresa_dir = EMPRESAS_DIR / empresa_id
+
+    if not empresa_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Empresa não encontrada. Use POST para cadastrar o plano."
+        )
+
+    plano_path = empresa_dir / "plano_contas.xlsx"
+    mapa_path = empresa_dir / "mapa_plano.json"
+
+    try:
+        with open(plano_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Erro ao atualizar plano de contas"
+        )
+
+    # INVALIDA O MAPA ANTIGO (regra crítica e correta)
+    if mapa_path.exists():
+        mapa_path.unlink()
+
+    return {
+        "status": "ok",
+        "message": "Plano de contas atualizado com sucesso. O mapa será regenerado automaticamente na próxima conciliação.",
         "empresa_id": empresa_id
     }
 
@@ -146,15 +205,13 @@ def conciliar(
             detail="Apenas arquivos .xlsx são permitidos"
         )
 
-    # ✅ AJUSTE IMPORTANTE:
-    # Verifica se o mapa_plano.json já existe
     empresa_dir = EMPRESAS_DIR / empresa_id
     mapa_path = empresa_dir / "mapa_plano.json"
 
     if not mapa_path.exists():
         raise HTTPException(
             status_code=409,
-            detail="Plano de contas não mapeado. Envie o plano de contas antes de conciliar."
+            detail="Plano de contas não mapeado. Envie ou atualize o plano antes de conciliar."
         )
 
     exec_id = str(uuid.uuid4())
