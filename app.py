@@ -25,7 +25,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Diretório das empresas
-EMPRESAS_DIR = Path("data_empresas")
+EMPRESAS_DIR = Path("data") / "empresas"
 EMPRESAS_DIR.mkdir(parents=True, exist_ok=True)
 
 API_KEY = os.getenv("API_KEY")
