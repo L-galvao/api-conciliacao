@@ -10,7 +10,7 @@ class EmpresaRepositoryLocal:
     Amanhã pode virar Postgres / S3 sem mudar o motor.
     """
 
-    def __init__(self, base_dir: str = "data"):
+    def __init__(self, base_dir: str = "data_empresas"):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(exist_ok=True)
 
@@ -19,7 +19,7 @@ class EmpresaRepositoryLocal:
     # =====================================================
 
     def _empresa_dir(self, empresa_id: str) -> Path:
-        path = self.base_dir / "empresas" / empresa_id
+        path = self.base_dir / empresa_id
         path.mkdir(parents=True, exist_ok=True)
         return path
 
