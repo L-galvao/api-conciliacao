@@ -1,11 +1,17 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pathlib import Path
 import shutil
 import uuid
 from dotenv import load_dotenv
-load_dotenv()
 import os
+
+# =========================================
+# CARREGAR VARIÁVEIS DE AMBIENTE
+# =========================================
+
+load_dotenv()
 
 # =========================================
 # CONFIGURAÇÕES
@@ -39,15 +45,21 @@ app = FastAPI(
 )
 
 # =========================================
-# DEPENDÊNCIA DE SEGURANÇA
+# SEGURANÇA (HTTP BEARER)
 # =========================================
 
-def validar_api_key(authorization: str = Header(...)):
+security = HTTPBearer()
+
+def validar_api_key(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     """
-    Espera header:
+    Espera:
     Authorization: Bearer SUA_API_KEY
     """
-    if authorization != f"Bearer {API_KEY}":
+    token = credentials.credentials
+
+    if token != API_KEY:
         raise HTTPException(status_code=403, detail="API KEY inválida")
 
 # =========================================
