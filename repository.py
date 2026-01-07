@@ -10,9 +10,9 @@ class EmpresaRepositoryLocal:
     Amanhã pode virar Postgres / S3 sem mudar o motor.
     """
 
-    def __init__(self, base_dir: str = "data_empresas"):
+    def __init__(self, base_dir: str = "data/empresas"):
         self.base_dir = Path(base_dir)
-        self.base_dir.mkdir(exist_ok=True)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
 
     # =====================================================
     # PATHS
