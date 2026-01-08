@@ -56,7 +56,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",      # dev local
+        "http://localhost:8080",      # dev local
         "https://lovable.app",        # lovable
         "https://*.lovable.app",      # subdomínios lovable
         "https://seu-dominio.com",    # futuro
