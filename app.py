@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import shutil
 import uuid
@@ -46,6 +47,23 @@ from motor import executar_conciliacao_empresa
 app = FastAPI(
     title="API Conciliação Contábil - MVP",
     version="1.0.0"
+)
+
+# =========================================
+# HABILITAR CORS
+# =========================================
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",      # dev local
+        "https://lovable.app",        # lovable
+        "https://*.lovable.app",      # subdomínios lovable
+        "https://seu-dominio.com",    # futuro
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # =========================================
