@@ -59,7 +59,7 @@ app.add_middleware(
         "http://localhost:8080",      # dev local
         "https://lovable.app",        # lovable
         "https://*.lovable.app",      # subdomínios lovable
-        "https://seu-dominio.com",    # futuro
+        "https://blanchedalmond-grouse-308172.hostingersite.com",    # futuro
     ],
     allow_credentials=True,
     allow_methods=["*"],
