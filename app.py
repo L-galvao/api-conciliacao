@@ -57,14 +57,17 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:8080",      # dev local
-        "https://lovable.app",        # lovable
-        "https://*.lovable.app",      # subdomínios lovable
-        "https://blanchedalmond-grouse-308172.hostingersite.com",    # futuro
+        "http://localhost:8080",
+        "https://lovable.app",
+        "https://blanchedalmond-grouse-308172.hostingersite.com",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+    ],
 )
 
 # =========================================
