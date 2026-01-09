@@ -1,13 +1,14 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
 from pathlib import Path
 import shutil
 import uuid
 from dotenv import load_dotenv
 import os
+import secrets
+from datetime import datetime, timedelta
 
 # =========================================
 # CARREGAR VARIÁVEIS DE AMBIENTE
@@ -26,7 +27,6 @@ OUTPUT_DIR = BASE_DIR / "outputs"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Diretório das empresas
 EMPRESAS_DIR = Path("data") / "empresas"
 EMPRESAS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -36,7 +36,7 @@ if not API_KEY:
     raise RuntimeError("API_KEY não configurada no ambiente")
 
 # =========================================
-# IMPORT DO MOTOR DE CONCILIAÇÃO
+# IMPORT DO MOTOR
 # =========================================
 
 from motor import executar_conciliacao_empresa
@@ -47,44 +47,69 @@ from motor import executar_conciliacao_empresa
 
 app = FastAPI(
     title="API Conciliação Contábil - MVP",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 # =========================================
-# HABILITAR CORS
+# CORS
 # =========================================
+
+FRONTEND_ORIGINS = [
+    "http://localhost:8080",
+    "https://lovable.app",
+    "https://blanchedalmond-grouse-308172.hostingersite.com",
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8080",
-        "https://lovable.app",
-        "https://blanchedalmond-grouse-308172.hostingersite.com",
-    ],
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "OPTIONS"],
-    allow_headers=[
-        "Authorization",
-        "Content-Type",
-        "Accept",
-    ],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 # =========================================
-# SEGURANÇA (HTTP BEARER)
+# SEGURANÇA
 # =========================================
 
 security = HTTPBearer()
 
-def validar_api_key(
+# 🔐 Tokens temporários (MVP)
+TOKENS_TEMP = {}
+
+def validar_token(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     token = credentials.credentials
-    if token != API_KEY:
-        raise HTTPException(status_code=403, detail="API KEY inválida")
+
+    if token not in TOKENS_TEMP:
+        raise HTTPException(status_code=403, detail="Token inválido")
+
+    if TOKENS_TEMP[token] < datetime.utcnow():
+        del TOKENS_TEMP[token]
+        raise HTTPException(status_code=403, detail="Token expirado")
 
 # =========================================
-# ENDPOINT DE SAÚDE
+# ENDPOINT DE TOKEN (NOVO)
+# =========================================
+
+@app.get("/auth/token")
+def gerar_token(request: Request):
+    origin = request.headers.get("origin")
+
+    if origin not in FRONTEND_ORIGINS:
+        raise HTTPException(status_code=403, detail="Origem não autorizada")
+
+    token = secrets.token_urlsafe(32)
+    TOKENS_TEMP[token] = datetime.utcnow() + timedelta(minutes=10)
+
+    return {
+        "token": token,
+        "expires_in_minutes": 10
+    }
+
+# =========================================
+# HEALTH
 # =========================================
 
 @app.get("/health")
@@ -92,186 +117,107 @@ def health_check():
     return {"status": "ok"}
 
 # =========================================
-# POST: PRIMEIRO UPLOAD DO PLANO DE CONTAS
+# PLANO DE CONTAS
 # =========================================
 
 @app.post(
     "/empresas/{empresa_id}/plano-contas",
-    dependencies=[Depends(validar_api_key)]
+    dependencies=[Depends(validar_token)]
 )
 def upload_plano_contas(
     empresa_id: str,
     file: UploadFile = File(...)
 ):
     if not empresa_id.isdigit():
-        raise HTTPException(
-            status_code=400,
-            detail="empresa_id deve ser o CNPJ sem pontuação"
-        )
+        raise HTTPException(status_code=400, detail="empresa_id inválido")
 
     if not file.filename.lower().endswith(".xlsx"):
-        raise HTTPException(
-            status_code=400,
-            detail="Plano de contas deve ser um arquivo .xlsx"
-        )
+        raise HTTPException(status_code=400, detail="Arquivo deve ser .xlsx")
 
     empresa_dir = EMPRESAS_DIR / empresa_id
     empresa_dir.mkdir(parents=True, exist_ok=True)
 
-    resultados_dir = empresa_dir / "resultados"
-    resultados_dir.mkdir(exist_ok=True)
-
     plano_path = empresa_dir / "plano_contas.xlsx"
     mapa_path = empresa_dir / "mapa_plano.json"
 
-    # REGRA ATUAL MANTIDA
     if mapa_path.exists():
-        raise HTTPException(
-            status_code=409,
-            detail="Plano de contas já mapeado. Use PUT para atualizar."
-        )
+        raise HTTPException(status_code=409, detail="Plano já mapeado")
 
-    try:
-        with open(plano_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Erro ao salvar plano de contas"
-        )
+    with open(plano_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
     return {
         "status": "ok",
-        "message": "Plano de contas enviado com sucesso. Agora o mapa pode ser gerado.",
+        "message": "Plano de contas enviado com sucesso",
         "empresa_id": empresa_id
     }
 
-# =========================================
-# PUT: ATUALIZAÇÃO DO PLANO DE CONTAS
-# =========================================
-
 @app.put(
     "/empresas/{empresa_id}/plano-contas",
-    dependencies=[Depends(validar_api_key)]
+    dependencies=[Depends(validar_token)]
 )
 def atualizar_plano_contas(
     empresa_id: str,
     file: UploadFile = File(...)
 ):
-    """
-    Atualiza o plano de contas de uma empresa já existente.
-    Sobrescreve plano_contas.xlsx e invalida o mapa_plano.json,
-    forçando a regeneração automática na próxima conciliação.
-    """
-
-    if not empresa_id.isdigit():
-        raise HTTPException(
-            status_code=400,
-            detail="empresa_id deve ser o CNPJ sem pontuação"
-        )
-
-    if not file.filename.lower().endswith(".xlsx"):
-        raise HTTPException(
-            status_code=400,
-            detail="Plano de contas deve ser um arquivo .xlsx"
-        )
-
     empresa_dir = EMPRESAS_DIR / empresa_id
-
     if not empresa_dir.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="Empresa não encontrada. Use POST para cadastrar o plano."
-        )
+        raise HTTPException(status_code=404, detail="Empresa não encontrada")
 
     plano_path = empresa_dir / "plano_contas.xlsx"
     mapa_path = empresa_dir / "mapa_plano.json"
 
-    try:
-        with open(plano_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Erro ao atualizar plano de contas"
-        )
+    with open(plano_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
-    # INVALIDA O MAPA ANTIGO (regra crítica e correta)
     if mapa_path.exists():
         mapa_path.unlink()
 
     return {
         "status": "ok",
-        "message": "Plano de contas atualizado com sucesso. O mapa será regenerado automaticamente na próxima conciliação.",
-        "empresa_id": empresa_id
+        "message": "Plano de contas atualizado"
     }
 
 # =========================================
-# ENDPOINT PRINCIPAL: CONCILIAÇÃO
+# CONCILIAÇÃO
 # =========================================
 
-@app.post("/conciliar", dependencies=[Depends(validar_api_key)])
+@app.post(
+    "/conciliar",
+    dependencies=[Depends(validar_token)]
+)
 def conciliar(
     empresa_id: str,
     file: UploadFile = File(...),
     request: Request = None
 ):
-    if not empresa_id.isdigit():
-        raise HTTPException(
-            status_code=400,
-            detail="empresa_id deve ser o CNPJ sem pontuação"
-        )
-
-    if not file.filename.lower().endswith(".xlsx"):
-        raise HTTPException(
-            status_code=400,
-            detail="Apenas arquivos .xlsx são permitidos"
-        )
-
     empresa_dir = EMPRESAS_DIR / empresa_id
     plano_path = empresa_dir / "plano_contas.xlsx"
 
     if not plano_path.exists():
-        raise HTTPException(
-            status_code=409,
-            detail="Plano de contas não mapeado. Envie ou atualize o plano antes de conciliar."
-        )
+        raise HTTPException(status_code=409, detail="Plano não encontrado")
 
     exec_id = str(uuid.uuid4())
     upload_path = UPLOAD_DIR / f"{empresa_id}_{exec_id}.xlsx"
 
-    try:
-        with open(upload_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Erro ao salvar arquivo")
+    with open(upload_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
-    try:
-        df_resultado, resumo = executar_conciliacao_empresa(
-            empresa_id=empresa_id,
-            path_lancamentos=upload_path
-        )
+    df_resultado, resumo = executar_conciliacao_empresa(
+        empresa_id=empresa_id,
+        path_lancamentos=upload_path
+    )
 
-        accept = request.headers.get("accept", "")
+    accept = request.headers.get("accept", "")
 
-        if "application/json" in accept:
-            return {
-                "resumo": resumo,
-                "dados": df_resultado.to_dict(orient="records")
-            }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erro ao processar conciliação: {str(e)}"
-        )
+    if "application/json" in accept:
+        return {
+            "resumo": resumo,
+            "dados": df_resultado.to_dict(orient="records")
+        }
 
     output_path = OUTPUT_DIR / f"resultado_{empresa_id}_{exec_id}.xlsx"
-
-    try:
-        df_resultado.to_excel(output_path, index=False)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Erro ao gerar arquivo final")
+    df_resultado.to_excel(output_path, index=False)
 
     return FileResponse(
         path=output_path,
