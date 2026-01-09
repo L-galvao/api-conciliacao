@@ -25,7 +25,6 @@ def filtrar_periodo(df, date_start, date_end):
         (df["Data"] < date_end)
     ].copy()
 
-
 # =====================================================
 # PARTIDA DOBRADA
 # =====================================================
@@ -55,7 +54,6 @@ def quebrar_conta(df):
     df.loc[:, "Conta Nome"] = df["Conta Completa"].str.extract(r"-\s*(.*)")
     df.loc[:, "valor_abs"] = df["Valor"].abs().round(2)
     return df
-
 
 # =====================================================
 # PLANO DE CONTAS
@@ -137,29 +135,25 @@ def classificar_contas_por_plano(df, mapa):
     )
     return df
 
-
 # =====================================================
-# IDENTIFICAÇÃO DE CLIENTE (VIA PLANO DE CONTAS)
+# IDENTIFICAÇÃO DE CLIENTE
 # =====================================================
 
 def identificar_cliente_por_plano(df):
     df = df.copy()
 
-    # Cliente só existe onde o plano diz que é CLIENTE
     df["Cliente"] = np.where(
         df["tipo_conta"] == "CLIENTE",
         df["Conta Nome"].str.upper().str.strip(),
         pd.NA
     )
 
-    # Propaga cliente para todas as linhas do mesmo lançamento
     df["Cliente"] = (
         df.groupby(["Data", "Descrição Histórico"])["Cliente"]
           .transform(lambda x: x.ffill().bfill())
     )
 
     return df
-
 
 # =====================================================
 # CONCILIAÇÃO
@@ -216,7 +210,6 @@ def conciliar_linhas(df):
 
     return df
 
-
 # =====================================================
 # STATUS FINAL
 # =====================================================
@@ -241,8 +234,16 @@ def classificar_status(df):
     return df
 
 # =====================================================
-# RESUMO
+# RESUMO (AJUSTADO)
 # =====================================================
+
+def _safe_float(v):
+    if v is None:
+        return 0.0
+    if isinstance(v, float) and np.isnan(v):
+        return 0.0
+    return float(v)
+
 
 def gerar_resumo(df):
     resumo = {}
@@ -251,13 +252,12 @@ def gerar_resumo(df):
         linhas = df[df["status_conciliacao"] == status]
         return {
             "quantidade": int(len(linhas)),
-            "valor": float(linhas["Valor"].sum())
+            "valor": _safe_float(linhas["Valor"].sum())
         }
 
     resumo["conciliado"] = bloco("CONCILIADO")
     resumo["nf_em_aberto"] = bloco("NF EM ABERTO")
     resumo["recebido_sem_nf"] = bloco("RECEBIDO SEM NF")
-
     resumo["total_lancamentos"] = int(len(df))
 
     return resumo
@@ -274,15 +274,12 @@ def executar_conciliacao_empresa(
 ):
     repo = EmpresaRepositoryLocal()
 
-    # -------- Lançamentos --------
     df = carregar_base(path_lancamentos)
     df = filtrar_periodo(df, date_start, date_end)
 
-    # -------- Partida dobrada --------
     df = normalizar_partida_dobrada(df)
     df = quebrar_conta(df)
 
-    # -------- Plano de contas --------
     mapa = repo.carregar_mapa_plano(empresa_id)
     if mapa is None:
         df_plano = repo.carregar_plano_contas(empresa_id)
@@ -292,26 +289,23 @@ def executar_conciliacao_empresa(
         repo.salvar_mapa_plano(empresa_id, mapa)
 
     df = classificar_contas_por_plano(df, mapa)
-
-    # -------- Cliente --------
     df = identificar_cliente_por_plano(df)
 
-    # -------- Conciliação --------
     df = conciliar_linhas(df)
     df = classificar_status(df)
 
     df_final = df[
         [
-        "Data",
-        "Cliente",
-        "Conta Código",
-        "Conta Nome",
-        "D/C",
-        "tipo_conta",
-        "status_conciliacao",
-        "Valor",
-        "Descrição Histórico",
-       ]
+            "Data",
+            "Cliente",
+            "Conta Código",
+            "Conta Nome",
+            "D/C",
+            "tipo_conta",
+            "status_conciliacao",
+            "Valor",
+            "Descrição Histórico",
+        ]
     ]
 
     resumo = gerar_resumo(df_final)

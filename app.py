@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import os
 import secrets
 from datetime import datetime, timedelta
+import numpy as np
 
 # =========================================
 # CARREGAR VARIÁVEIS DE AMBIENTE
@@ -223,10 +224,28 @@ def conciliar(
     accept = request.headers.get("accept") or ""
 
     if "application/json" in accept:
+        df_json = (
+            df_resultado
+            .replace([np.inf, -np.inf], 0)
+            .fillna(0)
+        )
+
+        resumo_json = {}
+
+        for k, v in resumo.items():
+            if isinstance(v, dict):
+                resumo_json[k] = {
+                    sub_k: (0 if (isinstance(sub_v, float) and np.isnan(sub_v)) else sub_v)
+                    for sub_k, sub_v in v.items()
+                }
+            else:
+                resumo_json[k] = 0 if (isinstance(v, float) and np.isnan(v)) else v
+
         return {
-            "resumo": resumo,
-            "dados": df_resultado.to_dict(orient="records")
+            "resumo": resumo_json,
+            "dados": df_json.to_dict(orient="records")
         }
+
 
     output_path = OUTPUT_DIR / f"resultado_{empresa_id}_{exec_id}.xlsx"
     df_resultado.to_excel(output_path, index=False)
