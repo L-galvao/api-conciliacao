@@ -67,7 +67,6 @@ app.add_middleware(
         "https://blanchedalmond-grouse-308172.hostingersite.com",
         "https://lovable.app",
     ],
-    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],
@@ -193,8 +192,8 @@ def atualizar_plano_contas(
 )
 def conciliar(
     empresa_id: str,
+    request: Request,
     file: UploadFile = File(...),
-    request: Request = None
 ):
     empresa_dir = EMPRESAS_DIR / empresa_id
     plano_path = empresa_dir / "plano_contas.xlsx"
@@ -213,7 +212,7 @@ def conciliar(
         path_lancamentos=upload_path
     )
 
-    accept = request.headers.get("accept", "")
+    accept = request.headers.get("accept") or ""
 
     if "application/json" in accept:
         return {
