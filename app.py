@@ -65,8 +65,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:8080",
         "https://blanchedalmond-grouse-308172.hostingersite.com",
-        "https://lovable.app",
     ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],
@@ -78,7 +78,7 @@ app.add_middleware(
 
 security = HTTPBearer()
 
-# 🔐 Tokens temporários (MVP)
+# Tokens temporários (MVP)
 TOKENS_TEMP = {}
 
 def validar_token(
@@ -92,9 +92,17 @@ def validar_token(
     if TOKENS_TEMP[token] < datetime.utcnow():
         del TOKENS_TEMP[token]
         raise HTTPException(status_code=403, detail="Token expirado")
+    
+# =========================================
+# ENDPOINT DE OPTIONS
+# =========================================
+
+@app.options("/{path:path}")
+def options_handler(path: str):
+    return {}
 
 # =========================================
-# ENDPOINT DE TOKEN (NOVO)
+# ENDPOINT DE TOKEN
 # =========================================
 
 @app.get("/auth/token")
