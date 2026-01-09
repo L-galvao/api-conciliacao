@@ -240,6 +240,27 @@ def classificar_status(df):
     df.loc[:, "status_conciliacao"] = df.apply(definir, axis=1)
     return df
 
+# =====================================================
+# RESUMO
+# =====================================================
+
+def gerar_resumo(df):
+    resumo = {}
+
+    def bloco(status):
+        linhas = df[df["status_conciliacao"] == status]
+        return {
+            "quantidade": int(len(linhas)),
+            "valor": float(linhas["Valor"].sum())
+        }
+
+    resumo["conciliado"] = bloco("CONCILIADO")
+    resumo["nf_em_aberto"] = bloco("NF EM ABERTO")
+    resumo["recebido_sem_nf"] = bloco("RECEBIDO SEM NF")
+
+    resumo["total_lancamentos"] = int(len(df))
+
+    return resumo
 
 # =====================================================
 # PIPELINE FINAL
@@ -279,16 +300,20 @@ def executar_conciliacao_empresa(
     df = conciliar_linhas(df)
     df = classificar_status(df)
 
-    return df[
+    df_final = df[
         [
-            "Data",
-            "Cliente",
-            "Conta Código",
-            "Conta Nome",
-            "D/C",
-            "tipo_conta",
-            "status_conciliacao",
-            "Valor",
-            "Descrição Histórico",
-        ]
+        "Data",
+        "Cliente",
+        "Conta Código",
+        "Conta Nome",
+        "D/C",
+        "tipo_conta",
+        "status_conciliacao",
+        "Valor",
+        "Descrição Histórico",
+       ]
     ]
+
+    resumo = gerar_resumo(df_final)
+
+    return df_final, resumo

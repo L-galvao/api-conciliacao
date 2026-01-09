@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request
 from pathlib import Path
 import shutil
 import uuid
@@ -209,7 +210,8 @@ def atualizar_plano_contas(
 @app.post("/conciliar", dependencies=[Depends(validar_api_key)])
 def conciliar(
     empresa_id: str,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    request: Request = None
 ):
     if not empresa_id.isdigit():
         raise HTTPException(
@@ -242,10 +244,19 @@ def conciliar(
         raise HTTPException(status_code=500, detail="Erro ao salvar arquivo")
 
     try:
-        df_resultado = executar_conciliacao_empresa(
+        df_resultado, resumo = executar_conciliacao_empresa(
             empresa_id=empresa_id,
             path_lancamentos=upload_path
         )
+
+        accept = request.headers.get("accept", "")
+
+        if "application/json" in accept:
+            return {
+                "resumo": resumo,
+                "dados": df_resultado.to_dict(orient="records")
+            }
+        
     except Exception as e:
         raise HTTPException(
             status_code=500,
