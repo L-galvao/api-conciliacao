@@ -27,46 +27,23 @@ def filtrar_periodo(df, date_start, date_end):
 
 
 # =====================================================
-# IDENTIFICAÇÃO DE CLIENTE (ANTES DA PARTIDA DOBRADA)
-# =====================================================
-
-def identificar_cliente_lancamento(df):
-    df = df.copy()
-
-    def extrair_cliente(conta):
-        if pd.isna(conta):
-            return pd.NA
-        conta = str(conta)
-        if "-" in conta:
-            return conta.split("-", 1)[1].strip().upper()
-        return pd.NA
-
-    df["Cliente"] = df["Conta Débito"].apply(extrair_cliente)
-    df["Cliente"] = df["Cliente"].fillna(
-        df["Conta Crédito"].apply(extrair_cliente)
-    )
-
-    return df
-
-
-# =====================================================
 # PARTIDA DOBRADA
 # =====================================================
 
 def normalizar_partida_dobrada(df):
-    df_debito = df.loc[:, ["Data", "Conta Débito", "Valor", "Descrição Histórico", "Cliente"]].copy()
+    df_debito = df.loc[:, ["Data", "Conta Débito", "Valor", "Descrição Histórico"]].copy()
     df_debito.loc[:, "Conta Completa"] = df_debito["Conta Débito"]
     df_debito.loc[:, "D/C"] = "D"
     df_debito.loc[:, "Valor"] = -df_debito["Valor"]
 
-    df_credito = df.loc[:, ["Data", "Conta Crédito", "Valor", "Descrição Histórico", "Cliente"]].copy()
+    df_credito = df.loc[:, ["Data", "Conta Crédito", "Valor", "Descrição Histórico"]].copy()
     df_credito.loc[:, "Conta Completa"] = df_credito["Conta Crédito"]
     df_credito.loc[:, "D/C"] = "C"
 
     return pd.concat(
         [
-            df_debito[["Data", "Conta Completa", "D/C", "Valor", "Descrição Histórico", "Cliente"]],
-            df_credito[["Data", "Conta Completa", "D/C", "Valor", "Descrição Histórico", "Cliente"]],
+            df_debito[["Data", "Conta Completa", "D/C", "Valor", "Descrição Histórico"]],
+            df_credito[["Data", "Conta Completa", "D/C", "Valor", "Descrição Histórico"]],
         ],
         ignore_index=True
     )
@@ -126,15 +103,24 @@ def gerar_mapa_plano_contas(df_plano):
         "FORNECEDOR"
     ))
 
-    receitas = df_plano.loc[(df_plano["Grupo Conta"] == 3) & (df_plano["Analítica"] == True)]
+    receitas = df_plano.loc[
+        (df_plano["Grupo Conta"] == 3) &
+        (df_plano["Analítica"] == True)
+    ]
     for _, r in receitas.iterrows():
         mapa[str(r["Código Reduzido"])] = "RECEITA"
 
-    despesas = df_plano.loc[(df_plano["Grupo Conta"] == 4) & (df_plano["Analítica"] == True)]
+    despesas = df_plano.loc[
+        (df_plano["Grupo Conta"] == 4) &
+        (df_plano["Analítica"] == True)
+    ]
     for _, d in despesas.iterrows():
         mapa[str(d["Código Reduzido"])] = "DESPESA"
 
-    patrimonio = df_plano.loc[(df_plano["Grupo Conta"] == 5) & (df_plano["Analítica"] == True)]
+    patrimonio = df_plano.loc[
+        (df_plano["Grupo Conta"] == 5) &
+        (df_plano["Analítica"] == True)
+    ]
     for _, p in patrimonio.iterrows():
         mapa[str(p["Código Reduzido"])] = "PATRIMONIO"
 
@@ -143,7 +129,35 @@ def gerar_mapa_plano_contas(df_plano):
 
 def classificar_contas_por_plano(df, mapa):
     df = df.copy()
-    df.loc[:, "tipo_conta"] = df["Conta Código"].astype(str).map(mapa).fillna("OUTRO")
+    df.loc[:, "tipo_conta"] = (
+        df["Conta Código"]
+        .astype(str)
+        .map(mapa)
+        .fillna("OUTRO")
+    )
+    return df
+
+
+# =====================================================
+# IDENTIFICAÇÃO DE CLIENTE (VIA PLANO DE CONTAS)
+# =====================================================
+
+def identificar_cliente_por_plano(df):
+    df = df.copy()
+
+    # Cliente só existe onde o plano diz que é CLIENTE
+    df["Cliente"] = np.where(
+        df["tipo_conta"] == "CLIENTE",
+        df["Conta Nome"].str.upper().str.strip(),
+        pd.NA
+    )
+
+    # Propaga cliente para todas as linhas do mesmo lançamento
+    df["Cliente"] = (
+        df.groupby(["Data", "Descrição Histórico"])["Cliente"]
+          .transform(lambda x: x.ffill().bfill())
+    )
+
     return df
 
 
@@ -239,14 +253,15 @@ def executar_conciliacao_empresa(
 ):
     repo = EmpresaRepositoryLocal()
 
+    # -------- Lançamentos --------
     df = carregar_base(path_lancamentos)
     df = filtrar_periodo(df, date_start, date_end)
 
-    df = identificar_cliente_lancamento(df)  # 👈 AQUI ESTÁ A CORREÇÃO
-
+    # -------- Partida dobrada --------
     df = normalizar_partida_dobrada(df)
     df = quebrar_conta(df)
 
+    # -------- Plano de contas --------
     mapa = repo.carregar_mapa_plano(empresa_id)
     if mapa is None:
         df_plano = repo.carregar_plano_contas(empresa_id)
@@ -256,10 +271,24 @@ def executar_conciliacao_empresa(
         repo.salvar_mapa_plano(empresa_id, mapa)
 
     df = classificar_contas_por_plano(df, mapa)
+
+    # -------- Cliente --------
+    df = identificar_cliente_por_plano(df)
+
+    # -------- Conciliação --------
     df = conciliar_linhas(df)
     df = classificar_status(df)
 
     return df[
-        ["Data", "Cliente", "Conta Código", "Conta Nome", "D/C",
-         "tipo_conta", "status_conciliacao", "Valor", "Descrição Histórico"]
+        [
+            "Data",
+            "Cliente",
+            "Conta Código",
+            "Conta Nome",
+            "D/C",
+            "tipo_conta",
+            "status_conciliacao",
+            "Valor",
+            "Descrição Histórico",
+        ]
     ]
