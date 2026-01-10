@@ -1,1 +1,27 @@
+# Ambiente virtual
+.venv/
+venv/
+
+# Variáveis de ambiente
 .env
+
+# Cache Python
+__pycache__/
+*.pyc
+
+# Dados e uploads
+data/
+data_api/
+
+# Versões de arquivos
+versions/
+
+# Jupyter
+*.ipynb
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Cor da aba VSCode
+.vscode/settings.json
