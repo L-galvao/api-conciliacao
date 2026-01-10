@@ -257,10 +257,6 @@ def conciliar(
             "dados": df_json.to_dict(orient="records")
         }
 
-
-    output_path = OUTPUT_DIR / f"resultado_{empresa_id}_{exec_id}.xlsx"
-    df_resultado.to_excel(output_path, index=False)
-
     return FileResponse(
         path=output_path,
         filename=output_path.name,
