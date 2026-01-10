@@ -221,6 +221,9 @@ def conciliar(
         path_lancamentos=upload_path
     )
 
+    output_path = OUTPUT_DIR / f"resultado_{empresa_id}_{exec_id}.xlsx"
+    df_resultado.to_excel(output_path, index=False)
+
     accept = request.headers.get("accept") or ""
 
     if "application/json" in accept:
