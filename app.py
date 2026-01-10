@@ -255,3 +255,35 @@ def conciliar(
         filename=output_path.name,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+# =========================================
+# DOWNLOAD DO RESULTADO DA CONCILIAÇÃO
+# =========================================
+
+@app.get(
+    "/conciliar/download",
+    dependencies=[Depends(validar_token)]
+)
+def download_conciliacao(empresa_id: str):
+    """
+    Retorna o último arquivo de conciliação gerado para a empresa.
+    Usado pelo frontend após receber o resumo em JSON.
+    """
+
+    # Busca todos os arquivos da empresa no diretório de saída
+    arquivos = list(OUTPUT_DIR.glob(f"resultado_{empresa_id}_*.xlsx"))
+
+    if not arquivos:
+        raise HTTPException(
+            status_code=404,
+            detail="Nenhum arquivo de conciliação encontrado para esta empresa"
+        )
+
+    # Pega o mais recente pelo timestamp de criação/modificação
+    arquivo_mais_recente = max(arquivos, key=lambda f: f.stat().st_mtime)
+
+    return FileResponse(
+        path=arquivo_mais_recente,
+        filename=arquivo_mais_recente.name,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
