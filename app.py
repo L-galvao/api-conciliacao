@@ -93,6 +93,14 @@ def validar_token(
     if TOKENS_TEMP[token] < datetime.utcnow():
         del TOKENS_TEMP[token]
         raise HTTPException(status_code=403, detail="Token expirado")
+
+# =========================================
+# ENDPOINT DE INICIALIZAÇÃO
+# =========================================
+    
+@app.get("/")
+def root():
+    return {"status": "API Conciliação Contábil ativa"}
     
 # =========================================
 # ENDPOINT DE OPTIONS
